@@ -1161,6 +1161,12 @@ retry_jit_alloc:
 	void *p = mmap(NULL,size,PROT_READ|PROT_WRITE|PROT_EXEC,
 		MAP_PRIVATE|MAP_ANONYMOUS|MAP_JIT,-1,0);
 	return p == MAP_FAILED ? NULL : p;
+#elif defined(__ANDROID__)
+	// Android targeting API 29+ enforces W^X for anonymous mmap. Start
+	// the page as RW only; hl_jit_write_end will flip it to RX after the
+	// runtime is done writing.
+	void *p = mmap(NULL,size,PROT_READ|PROT_WRITE,(MAP_PRIVATE|MAP_ANONYMOUS),-1,0);
+	return p == MAP_FAILED ? NULL : p;
 #else
 	void *p;
 	p = mmap(NULL,size,PROT_READ|PROT_WRITE|PROT_EXEC,(MAP_PRIVATE|MAP_ANONYMOUS),-1,0);
@@ -1194,8 +1200,12 @@ HL_PRIM void hl_jit_write_end( void *code, int size ) {
 #if defined(__APPLE__) && defined(__aarch64__)
 	pthread_jit_write_protect_np(1); // back to executable
 	sys_icache_invalidate(code, (size_t)size);
+#elif defined(__ANDROID__)
+	// We mmap'd RW-only on Android; flip to RX now and flush i-cache.
+	mprotect(code, (size_t)size, PROT_READ | PROT_EXEC);
+	__builtin___clear_cache((char*)code, (char*)code + size);
 #elif defined(__aarch64__) || defined(__arm__)
-	// Linux/Android ARM(64): no W^X enforcement, but i-cache must still be flushed.
+	// Linux ARM(64) with PROT_EXEC mapping: just flush i-cache.
 	__builtin___clear_cache((char*)code, (char*)code + size);
 #else
 	(void)code; (void)size;
