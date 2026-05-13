@@ -105,6 +105,11 @@ static bool isGlOptionsSet = false;
 
 HL_PRIM bool HL_NAME(init_once)() {
 	SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+#	ifdef __ANDROID__
+	// Pure HL/native binary (no JNI Activity), tell SDL2 the main entry
+	// point is "already" set up so it doesn't try the Android Java glue.
+	SDL_SetMainReady();
+#	endif
 	if( SDL_Init(SDL_INIT_EVERYTHING) != 0 ) {
 		hl_error("SDL_Init failed: %s", hl_to_utf16(SDL_GetError()));
 		return false;
