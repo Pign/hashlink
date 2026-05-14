@@ -21,6 +21,9 @@
  */
 #include <hl.h>
 #include <hlmodule.h>
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
 
 #ifdef HL_WIN
 #	undef _GUID
@@ -413,6 +416,22 @@ static void *resolve_library( const char *lib, bool is_opt ) {
 
 	strcpy(tmp+strlen(lib),".hdll");
 	h = dlopen(tmp,RTLD_LAZY);
+#	if defined(__ANDROID__) || defined(HL_ANDROID)
+	// Android's dynamic linker doesn't honor LD_LIBRARY_PATH and won't search
+	// app data dirs for a bare filename, so try HL_LIBRARY_PATH explicitly.
+	if( h == NULL ) {
+		const char *base = getenv("HL_LIBRARY_PATH");
+		if( base ) {
+			char abs[512];
+			snprintf(abs, sizeof(abs), "%s/%s", base, tmp);
+			h = dlopen(abs, RTLD_LAZY);
+		}
+	}
+	// Last-ditch: some libs (e.g. sdl) are linked directly into libmain.so to
+	// avoid re-loading libSDL2 — find their primitives in the host binary.
+	if( h == NULL ) h = dlopen("libmain.so", RTLD_LAZY);
+	if( h == NULL ) h = dlopen(NULL, RTLD_LAZY);
+#	endif
 	if( h == NULL && !is_opt )
 		hl_fatal1("Failed to load library %s",tmp);
 	return h;
