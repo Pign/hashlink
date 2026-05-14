@@ -29,6 +29,10 @@
 #include <posix/posix.h>
 #endif
 
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
+
 HL_PRIM void *hl_fatal_error( const char *msg, const char *file, int line ) {
 	hl_blocking(true);
 #	ifdef HL_WIN_DESKTOP
@@ -41,10 +45,23 @@ HL_PRIM void *hl_fatal_error( const char *msg, const char *file, int line ) {
 		MessageBoxA(NULL,buf,"Fatal Error", MB_OK | MB_ICONERROR);
 	}
 #	endif
+#	ifdef __ANDROID__
+	// Stdout isn't captured by logcat; surface the error there so the user
+	// can read it via `adb logcat`.
+	__android_log_print(6 /*ANDROID_LOG_ERROR*/, "HL", "%s(%d) : FATAL ERROR : %s", file, line, msg);
+#	endif
 	printf("%s(%d) : FATAL ERROR : %s\n",file,line,msg);
 	hl_blocking(false);
 	hl_debug_break();
+#	ifdef __ANDROID__
+	// exit() runs atexit hooks (notably SDL_Quit) which destroy mutexes the
+	// hwui/render threads still hold, producing a misleading FORTIFY abort
+	// that masks the real fatal error. abort() skips that and gives a clean
+	// tombstone for the actual cause.
+	abort();
+#	else
 	exit(1);
+#	endif
 	return NULL;
 }
 
